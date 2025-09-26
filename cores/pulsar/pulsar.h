@@ -63,6 +63,7 @@ typedef struct ps {
   // computed intermediate parameter values, used once per block
   float oscPhaseDelta;
   float density_ratio;
+  float mod_ratio;
   float mod_depth;
   float waveform;
   uint8_t frequency_couple;

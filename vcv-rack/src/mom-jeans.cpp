@@ -13,6 +13,28 @@ static float scaleLin(float x, float a, float b, float c, float d) {
 struct PulsarOutput {
 	float pulse;
 	float sync;
+	float internal_lfo;
+};
+
+static float denormalizedPitch(float pitch) {
+	pitch = scaleLin(pitch, 0.f, 1.f, 0, 84);
+	return 27.5 * powf(2.f, pitch / 12.f);
+}
+
+struct FrequencyParamQuantity : ParamQuantity {
+    std::string getDisplayValueString() override {
+        float value = getValue();
+		float displayValue = denormalizedPitch(value);
+        return string::f("%.1f", displayValue);
+    }
+    
+    std::string getLabel() override {
+        return "Pitch";
+    }
+    
+    std::string getUnit() override {
+        return "Hz"; // or whatever unit you want
+    }
 };
 
 struct MomJeansBase : Module {
@@ -48,28 +70,52 @@ struct MomJeansBase : Module {
 	enum LightId {
 		PITCH_LED_LIGHT,
 		CADENCE_LED_LIGHT,
+		COUPLING_LED_LIGHT,
+		QUANTIZATION_LED_LIGHT,
 		LIGHTS_LEN
 	};
 
 	MomJeansBase() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-		configParam(PITCH_PARAM, 0.f, 1.f, 0.f, "");
-		configParam(DENSITY_PARAM, 0.f, 1.f, 0.f, "");
-		configParam(TORQUE_PARAM, 0.f, 1.f, 0.f, "");
-		configParam(CADENCE_PARAM, 0.f, 1.f, 0.f, "");
-		configParam(COUPLING_PARAM, 0.f, 1.f, 0.f, "");
-		configParam(SHAPE_PARAM, 0.f, 1.f, 0.f, "");
-		configParam(QUANTIZATION_PARAM, 0.f, 1.f, 0.f, "");
-		configInput(DENSITY_INPUT, "");
-		configInput(SHAPE_INPUT, "");
-		configInput(TORQUE_INPUT, "");
-		configInput(CADENCE_INPUT, "");
-		configInput(FM_INDEX_INPUT, "");
-		configInput(LINEAR_FM_INPUT, "");
-		configInput(V_OCT_INPUT, "");
-		configInput(SYNC_INPUT, "");
-		configOutput(OUTPUT_OUTPUT, "");
-		configOutput(TRIGGER_OUTPUT, "");
+		configParam(PITCH_PARAM, 0.f, 1.f, 0.25f, "Pitch");
+		paramQuantities[PITCH_PARAM] = new FrequencyParamQuantity;
+		paramQuantities[PITCH_PARAM]->module = this;
+		paramQuantities[PITCH_PARAM]->paramId = PITCH_PARAM;
+
+		configParam(DENSITY_PARAM, 0.f, 100.f, 0.f, "Density");
+		paramQuantities[DENSITY_PARAM]->name = "Density";
+		paramQuantities[DENSITY_PARAM]->unit = "%";
+
+		configParam(TORQUE_PARAM, 0.f, 100.f, 0.f, "Torque");
+		paramQuantities[TORQUE_PARAM]->name = "Torque";
+		paramQuantities[TORQUE_PARAM]->unit = "%";
+
+		configParam(CADENCE_PARAM, 0.f, 100.f, 0.f, "Cadence");
+		paramQuantities[CADENCE_PARAM]->name = "Cadence";
+		paramQuantities[CADENCE_PARAM]->unit = "%";
+
+		configParam(COUPLING_PARAM, 0.f, 1.f, 0.f, "Coupling");
+		paramQuantities[COUPLING_PARAM]->name = "Coupling";
+		paramQuantities[COUPLING_PARAM]->unit = "";
+
+		configParam(SHAPE_PARAM, 0.f, 5.f, 0.f, "Shape");
+		paramQuantities[SHAPE_PARAM]->name = "Shape";
+		paramQuantities[SHAPE_PARAM]->unit = "";
+
+		configParam(QUANTIZATION_PARAM, 0.f, 1.f, 0.f, "Quantization");
+		paramQuantities[QUANTIZATION_PARAM]->name = "Quantization";
+		paramQuantities[QUANTIZATION_PARAM]->unit = "";
+
+		configInput(DENSITY_INPUT, "Density");
+		configInput(SHAPE_INPUT, "Shape");
+		configInput(TORQUE_INPUT, "Torque");
+		configInput(CADENCE_INPUT, "Cadence");
+		configInput(FM_INDEX_INPUT, "FM Index");
+		configInput(LINEAR_FM_INPUT, "Linear FM");
+		configInput(V_OCT_INPUT, "V/Oct");
+		configInput(SYNC_INPUT, "Sync");
+		configOutput(OUTPUT_OUTPUT, "Output");
+		configOutput(TRIGGER_OUTPUT, "Trigger");
 	}
 
 	void onReset(const ResetEvent& e) override {
@@ -104,42 +150,35 @@ struct MomJeansBase : Module {
 		float sync = inputs[SYNC_INPUT].getVoltage();
 		float density = inputs[DENSITY_INPUT].getVoltage();
 
+		if (!inputs[FM_INDEX_INPUT].isConnected()) {
+			fm_index = 1.0f;
+		}
+
 		// Read parameters
 		float pitch = params[PITCH_PARAM].getValue();
-		float density_param = params[DENSITY_PARAM].getValue();
-		float torque_param = params[TORQUE_PARAM].getValue();
-		float cadence_param = params[CADENCE_PARAM].getValue();
-		float shape_param = params[SHAPE_PARAM].getValue();
+		float density_param = params[DENSITY_PARAM].getValue() / 100.f;
+		float torque_param = params[TORQUE_PARAM].getValue() / 100.f;
+		float cadence_param = params[CADENCE_PARAM].getValue() / 100.f;
+		float shape_param = params[SHAPE_PARAM].getValue() / 5.f;
+
 		float coupling = params[COUPLING_PARAM].getValue();
 		float quantization = params[QUANTIZATION_PARAM].getValue();
 
-		// Map inputs/parameters to pulsar configuration
-		// void pulsar_configure(
-		// 	ps_t *self,
-		// 	float pulse_frequency,
-		// 	float density_ratio,
-		// 	float mod_ratio,
-		// 	float mod_depth,
-		// 	float waveform,
-		// 	uint8_t ratio_lock,
-		// 	uint8_t frequency_couple
-		// );
+		lights[COUPLING_LED_LIGHT].setBrightness((coupling > 0.5f) ? 1.0f : 0.0f);
+		lights[QUANTIZATION_LED_LIGHT].setBrightness((quantization > 0.5f) ? 1.0f : 0.0f);
 
-		// If the pitch knob is less than 0.25, then it's a continuous LFO control from
-		// 0.25 Hz up to 27.5 Hz, with quadratic scaling. Above that, it covers seven octaves from
-		// A0 to A7
+		// Simply scale the pitch, since the hardware DAC can't do LFO values
 
+		float lfo_cutoff = 0.0f;
 		float pulse_frequency = 0.f;
-		if (pitch < 0.25f) {
-			pitch = scaleLin(pitch, 0.0, 0.25f, -2.f, 4.78135971352f);
-			pitch += v_oct + linear_fm * fm_index / 5.f;
-			pulse_frequency = std::pow(2.f, pitch);
-		} else {
-			pitch = scaleLin(pitch, 0.25f, 1.f, 0, 84);
-			pitch = std::roundf(pitch);
-			pitch += (v_oct + linear_fm * fm_index / 5.f) * 12.0f;
-			pulse_frequency = 27.5 * std::pow(2.f, pitch / 12.f);
-		}
+
+		pitch = scaleLin(pitch, lfo_cutoff, 1.f, 0, 84);
+		pitch += v_oct * 12.0f;
+		pitch = 27.5 * powf(2.f, pitch / 12.f);
+
+		// apply linear fm
+		pitch += linear_fm * fm_index * pitch * 0.2f;
+		pulse_frequency = fclampf(pitch, 1.0f, 20000.0f);
 
 		float density_input_voltage = density + (density_param - 0.5) * 10.0f;
 		if (!inputs[DENSITY_INPUT].isConnected()) {
@@ -151,7 +190,7 @@ struct MomJeansBase : Module {
 		float density_ratio = fclampf(density_input_voltage / 5.0f, -1.0f, 1.0f);
 		float mod_ratio = fclampf(cadence / 5.0 + cadence_param, 0.0, 1.0);
 		float mod_depth = fclampf(torque / 5.0 + torque_param, 0.0, 1.0);
-		float waveform = fclampf(shape / 5.0 + shape_param, 0.0, 1.0);
+		float waveform = fclampf(shape / 5.0 + shape_param, 0.0, 1.0) * 4.9999f;;
 		
 		PulsarOutput pulsar_output = nextSample(
 			pulse_frequency,
@@ -164,8 +203,11 @@ struct MomJeansBase : Module {
 			sync > 2.5f ? 1 : 0
 		);
 
-		outputs[TRIGGER_OUTPUT].setVoltage(pulsar_output.sync);
-		outputs[OUTPUT_OUTPUT].setVoltage(pulsar_output.pulse);
+		outputs[TRIGGER_OUTPUT].setVoltage(pulsar_output.sync * 10.0f);
+		outputs[OUTPUT_OUTPUT].setVoltage(pulsar_output.pulse * 10.0f);
+
+		// lights[PITCH_LED_LIGHT].setBrightness(fclampf(pulsar_output.pulse, 0.0f, 1.0f));
+		lights[CADENCE_LED_LIGHT].setBrightness(fclampf(pulsar_output.internal_lfo, 0.0f, 1.0f));
 	}
 };
 
@@ -192,9 +234,12 @@ struct MomJeans : MomJeansBase {
 		);
 
 		// Process pulsar
-		float pulse = pulsar_process(&pulsar, pulse_frequency, sync);
+		float debug_value = 0.0f;
+		float pulse = pulsar_process(&pulsar, pulse_frequency, sync, &debug_value);
+		float sync_output = pulsar_get_sync_output(&pulsar);
+		float internal_lfo = sinf(pulsar_get_internal_lfo_phase(&pulsar) * 2.0f * M_PI);
 
-		return { pulse, pulsar_get_debug_value(&pulsar) };
+		return { pulse, sync_output, internal_lfo };
 	}
 };
 
@@ -260,7 +305,7 @@ struct MomJeansGen : MomJeansBase {
 			1
 		);
 
-		return { (float) outputBuffers[0][0], (float) outputBuffers[1][0] };
+		return { (float) outputBuffers[0][0], (float) outputBuffers[1][0], 0.0f };
 	}
 };
 
@@ -278,9 +323,9 @@ struct Mom_jeansWidget : ModuleWidget {
 		addParam(createParam<RoundBigBlackKnob>(mm2px(Vec(21.462, 16.097)), module, MomJeansBase::DENSITY_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(29.001, 44.915)), module, MomJeansBase::TORQUE_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(14.175, 49.759)), module, MomJeansBase::CADENCE_PARAM));
-		addParam(createParamCentered<NKK>(mm2px(Vec(7.996, 62.614)), module, MomJeansBase::COUPLING_PARAM));
+		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(7.996, 62.614)), module, MomJeansBase::COUPLING_PARAM, MomJeansBase::COUPLING_LED_LIGHT));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(23.201, 68.618)), module, MomJeansBase::SHAPE_PARAM));
-		addParam(createParamCentered<NKK>(mm2px(Vec(7.996, 73.101)), module, MomJeansBase::QUANTIZATION_PARAM));
+		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(7.996, 73.101)), module, MomJeansBase::QUANTIZATION_PARAM, MomJeansBase::QUANTIZATION_LED_LIGHT));
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(17.801, 34.734)), module, MomJeansBase::DENSITY_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.000, 81.248)), module, MomJeansBase::SHAPE_INPUT));
@@ -294,8 +339,8 @@ struct Mom_jeansWidget : ModuleWidget {
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(32.000, 107.251)), module, MomJeansBase::OUTPUT_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(19.999, 109.123)), module, MomJeansBase::TRIGGER_OUTPUT));
 
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(17.267, 12.607)), module, MomJeansBase::PITCH_LED_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(6.510, 42.485)), module, MomJeansBase::CADENCE_LED_LIGHT));
+		// addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(17.267, 12.607)), module, MomJeansBase::PITCH_LED_LIGHT));
+		addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(6.510, 42.485)), module, MomJeansBase::CADENCE_LED_LIGHT));
 	}
 };
 

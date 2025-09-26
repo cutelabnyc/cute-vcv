@@ -14,6 +14,7 @@ static float fclampf(float x, float a, float b) {
 
 void minblep_zero(minblep_t *self)
 {
+    self->_pos = 0;
     for (int i = 0; i < 2 * MINBLEP_ZERO_CROSSINGS; i++) {
         self->_buf[i] = 0.0f;
     }

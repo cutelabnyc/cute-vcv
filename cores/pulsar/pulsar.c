@@ -210,7 +210,7 @@ float _pulsar_process_voice(ps_t *self, ps_voice_t *voice) {
 float _calc_mod_ratio(float f0, float mod_ratio, uint8_t frequency_couple, uint8_t ratio_lock) {
   static const float lowCutoff = 0.25;
   static const float highCutoff = 0.5;
-  static const float vibratoMax = 10;
+  static const float vibratoMax = 0.5f;
   static const float ratioMax = 1;
   static float tf = 1;
   static float fac1 = 0;
@@ -218,17 +218,18 @@ float _calc_mod_ratio(float f0, float mod_ratio, uint8_t frequency_couple, uint8
   float out = 0;
 
   if (frequency_couple) {
-    if (f0 < lowCutoff) {
-      out = (f0 / lowCutoff) * vibratoMax;
-    } else if (f0 < highCutoff) {
+    if (mod_ratio < lowCutoff) {
+      out = (mod_ratio / lowCutoff) * vibratoMax;
+    } else if (mod_ratio < highCutoff) {
       tf = (mod_ratio - lowCutoff) / (highCutoff - lowCutoff);
+      tf = powf(tf, 2.0f); // ease
       out = (1 - tf) * vibratoMax + (tf) * f0 * 0.1;
     } else {
       fac1 = (ratioMax - 0.1) * (mod_ratio - highCutoff) / (1 - highCutoff);
       out = (fac1 + 0.1) * f0;
     }
   } else {
-    out = powf(mod_ratio, 2.2) * 1000.0;
+    out = powf(mod_ratio, 3.5) * 1000.0;
   }
 
   // if (frequency_couple) {
@@ -271,14 +272,14 @@ float _calc_ratio_lock(float fm, float f0, uint8_t ratio_lock) {
 }
 
 void _calc_mod_depth(float f0, float mod_depth, uint8_t frequency_couple, float *low, float *high) {
-  static const float breakpoint = 0.75f;
+  static const float breakpoint = 0.85f;
   static const float inv_breakpoint = 1.0f / breakpoint;
   static const float breakpoint_top_scale = 9.0f / (1.0f - breakpoint);
   float depth_mult = 1.0f;
 
   if (frequency_couple) {
     float lf = f0 * 0.001;
-    depth_mult = lf * powf(mod_depth, 3.0) * 10.0f;
+    depth_mult = lf * powf(mod_depth, 2.7) * 10.0f;
   } else {
     if (mod_depth < breakpoint) {
       depth_mult = mod_depth * inv_breakpoint;
@@ -343,6 +344,12 @@ void _trigger_pulsaret(ps_t *self, float pulse_frequency, float oscPhase)
 {
   float depth_min, depth_max;
   _calc_mod_depth(pulse_frequency, self->mod_depth, self->frequency_couple, &depth_min, &depth_max);
+
+  float minRatioCutoff = 0.05f;
+  if (self->mod_ratio < minRatioCutoff) {
+    depth_min *= self->mod_ratio / minRatioCutoff;
+    depth_max *= self->mod_ratio / minRatioCutoff;
+  }
 
   #ifdef ARM_MATH_CM7
   float lfo = arm_sin_f32(oscPhase * PI * 2);
@@ -434,6 +441,7 @@ void pulsar_configure(
 
   self->oscPhaseDelta = fm * self->inv_sample_rate;
   self->density_ratio = density_ratio;
+  self->mod_ratio = mod_ratio;
   self->mod_depth = mod_depth;
   self->waveform = waveform;
   self->frequency_couple = frequency_couple;  
@@ -460,7 +468,7 @@ float pulsar_process(ps_t *self, float pulse_frequency, uint8_t resync, float *d
   float phaseDelta = (pulse_frequency / self->sample_rate);
   phasor_step(&self->phasor, phaseDelta);
   zerox |= phasor_getZeroCrossing(&self->phasor);
-  self->sync_output = zerox ? 1.0f : 0.0f;
+  self->sync_output = self->phasor.id < 0.5f ? 1.0f : 0.0f;
 
   float phasorValue = self->phasor.id;
   float nextOutput = 0.0f;
