@@ -20,7 +20,6 @@ LDFLAGS +=
 SOURCES += $(wildcard src/*.cpp)
 SOURCES += ../cores/pulsar/biquad.c
 SOURCES += ../cores/pulsar/pulsar.c
-SOURCES += ../cores/pulsar/pulsar_calibration.c
 SOURCES += ../cores/pulsar/pulsar_lut.c 
 SOURCES += ../cores/pulsar/pulsar_oscillator.c
 SOURCES += ../cores/pulsar/minblep.c
