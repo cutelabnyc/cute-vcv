@@ -1,0 +1,125 @@
+name: Build and Release VCV Rack Plugin
+
+on:
+  push:
+    tags:
+      - vcv-rack/v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to run the release for (e.g. vcv-rack/v2.0.1)'
+        required: true
+
+
+jobs:
+  release:
+    runs-on: macos-14 # M1 runner for arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch full history and tags
+        run: git fetch --tags --unshallow
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # First remove the vcv-rack/ prefix
+          VERSION="${TAG#vcv-rack/}"
+          # Then remove the v prefix if it exists
+          VERSION="${VERSION#v}"
+          
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Debug version
+        run: |
+          echo "Tag: ${{ steps.version.outputs.tag }}"
+          echo "Version: ${{ steps.version.outputs.version }}"
+
+      - name: Extract version from plugin.json
+        id: plugin
+        run: |
+          JSON_VERSION=$(jq -r .version vcv-rack/plugin.json)
+          echo "plugin_version=$JSON_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version match
+        run: |
+          if [ "${{ steps.version.outputs.version }}" != "${{ steps.plugin.outputs.plugin_version }}" ]; then
+            echo "❌ Tag version (${{ steps.version.outputs.version }}) and plugin.json version (${{ steps.plugin.outputs.plugin_version }}) mismatch"
+            exit 1
+          fi
+
+      - name: Set up Rust (for git-cliff)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install git-cliff
+        run: cargo install git-cliff
+
+      - name: Install jq
+        run: brew install jq
+
+      - name: Generate CHANGELOG.md
+        run: |
+          cd vcv-rack
+          git cliff -o CHANGELOG_FULL.md
+          cd ..
+          cat vcv-rack/CHANGELOG_FULL.md
+
+      - name: Download Rack SDK
+        run: |
+          curl -L https://vcvrack.com/downloads/Rack-SDK-2.6.4-mac-arm64.zip -o Rack-SDK.zip
+          unzip Rack-SDK.zip -d Rack-SDK
+
+      - name: Build plugin (macOS arm64)
+        run: |
+          cd vcv-rack
+          export RACK_DIR="${PWD}/../Rack-SDK/Rack-SDK"
+          make
+          make dist
+
+      - name: Extract changelog for current version
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          echo "Extracting changelog section for tag prefix: $TAG"
+          awk -v tag="$TAG" '
+            $0 ~ "^## \\[" tag "\\]" {
+              found = 1
+              print
+              next
+            }
+            found && /^## \[/ { exit }
+            found { print }
+          ' vcv-rack/CHANGELOG_FULL.md > vcv-rack/CHANGELOG.md
+          echo "=== Extracted CHANGELOG.md ==="
+          cat vcv-rack/CHANGELOG.md
+
+      - name: Prepend hand-written notes (if any)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES_FILE="vcv-rack/release-notes/v${VERSION}.md"
+          CHANGELOG_FILE="vcv-rack/CHANGELOG.md"
+          TEMP_FILE=$(mktemp)
+          if [ -f "$NOTES_FILE" ]; then
+            cat "$NOTES_FILE" > "$TEMP_FILE"
+          else
+            echo "# Notes for version ${VERSION}" > "$TEMP_FILE"
+          fi
+          echo -e "\n" >> "$TEMP_FILE"
+          cat "$CHANGELOG_FILE" >> "$TEMP_FILE"
+          mv "$TEMP_FILE" "$CHANGELOG_FILE"
+          cat "$CHANGELOG_FILE"
+
+      - name: Upload Release Artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          body_path: vcv-rack/CHANGELOG.md
+          files: vcv-rack/dist/CuteLab-${{ steps.plugin.outputs.plugin_version }}-mac-arm64.vcvplugin
