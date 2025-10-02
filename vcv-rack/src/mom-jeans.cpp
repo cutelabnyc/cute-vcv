@@ -16,15 +16,23 @@ struct PulsarOutput {
 	float internal_lfo;
 };
 
-static float denormalizedPitch(float pitch) {
-	pitch = scaleLin(pitch, 0.f, 1.f, 0, 84);
+static float denormalizedPitch(float pitch, float minScaleValue, float maxScaleValue) {
+	pitch = scaleLin(pitch, 0.f, 1.f, minScaleValue, maxScaleValue);
 	return 27.5 * powf(2.f, pitch / 12.f);
 }
 
 struct FrequencyParamQuantity : ParamQuantity {
+	float _minScaleValue = 0.f;
+	float _maxScaleValue = 84.f;
+
+	void setScaleRange(float minValue, float maxValue) {
+		_minScaleValue = minValue;
+		_maxScaleValue = maxValue;
+	}
+
     std::string getDisplayValueString() override {
         float value = getValue();
-		float displayValue = denormalizedPitch(value);
+		float displayValue = denormalizedPitch(value, _minScaleValue, _maxScaleValue);
         return string::f("%.1f", displayValue);
     }
     
@@ -40,6 +48,7 @@ struct FrequencyParamQuantity : ParamQuantity {
 struct MomJeansBase : Module {
 
 	ps_t pulsar;
+	FrequencyParamQuantity *frequencyParamQuantity;
 
 	enum ParamId {
 		PITCH_PARAM,
@@ -49,6 +58,7 @@ struct MomJeansBase : Module {
 		COUPLING_PARAM,
 		SHAPE_PARAM,
 		QUANTIZATION_PARAM,
+		PITCH_MODE_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -72,13 +82,16 @@ struct MomJeansBase : Module {
 		CADENCE_LED_LIGHT,
 		COUPLING_LED_LIGHT,
 		QUANTIZATION_LED_LIGHT,
+		PITCH_MODE_LED_LIGHT,
 		LIGHTS_LEN
 	};
 
 	MomJeansBase() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(PITCH_PARAM, 0.f, 1.f, 0.25f, "Pitch");
-		paramQuantities[PITCH_PARAM] = new FrequencyParamQuantity;
+		frequencyParamQuantity = new FrequencyParamQuantity();
+		paramQuantities[PITCH_PARAM] = frequencyParamQuantity;
+		paramQuantities[PITCH_PARAM]->name = "Pitch";
 		paramQuantities[PITCH_PARAM]->module = this;
 		paramQuantities[PITCH_PARAM]->paramId = PITCH_PARAM;
 
@@ -105,6 +118,10 @@ struct MomJeansBase : Module {
 		configParam(QUANTIZATION_PARAM, 0.f, 1.f, 0.f, "Quantization");
 		paramQuantities[QUANTIZATION_PARAM]->name = "Quantization";
 		paramQuantities[QUANTIZATION_PARAM]->unit = "";
+
+		configParam(PITCH_MODE_PARAM, 0.f, 1.f, 0.f, "Extended Pitch Range");
+		paramQuantities[PITCH_MODE_PARAM]->name = "Extended Pitch Range";
+		paramQuantities[PITCH_MODE_PARAM]->unit = "";
 
 		configInput(DENSITY_INPUT, "Density");
 		configInput(SHAPE_INPUT, "Shape");
@@ -163,16 +180,24 @@ struct MomJeansBase : Module {
 
 		float coupling = params[COUPLING_PARAM].getValue();
 		float quantization = params[QUANTIZATION_PARAM].getValue();
+		float pitch_mode = params[PITCH_MODE_PARAM].getValue();
 
 		lights[COUPLING_LED_LIGHT].setBrightness((coupling > 0.5f) ? 1.0f : 0.0f);
 		lights[QUANTIZATION_LED_LIGHT].setBrightness((quantization > 0.5f) ? 1.0f : 0.0f);
+		lights[PITCH_MODE_LED_LIGHT].setBrightness((pitch_mode > 0.5f) ? 1.0f : 0.0f);
 
 		// Simply scale the pitch, since the hardware DAC can't do LFO values
-
 		float lfo_cutoff = 0.0f;
 		float pulse_frequency = 0.f;
+		float pitch_min = 36.f;
+		float pitch_max = 60.f;
+		if (pitch_mode > 0.5f) {
+			pitch_min = 0.f;
+			pitch_max = 84.f;
+		}
 
-		pitch = scaleLin(pitch, lfo_cutoff, 1.f, 0, 84);
+		frequencyParamQuantity->setScaleRange(pitch_min, pitch_max);
+		pitch = scaleLin(pitch, lfo_cutoff, 1.f, pitch_min, pitch_max);
 		pitch += v_oct * 12.0f;
 		pitch = 27.5 * powf(2.f, pitch / 12.f);
 
@@ -312,6 +337,7 @@ struct MomJeansGen : MomJeansBase {
 struct Mom_jeansWidget : ModuleWidget {
 	Mom_jeansWidget(MomJeansBase* module) {
 		setModule(module);
+
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/mom-jeans.svg")));
 
 		// addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
@@ -319,28 +345,29 @@ struct Mom_jeansWidget : ModuleWidget {
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		// addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(9.574, 20.288)), module, MomJeansBase::PITCH_PARAM));
-		addParam(createParam<RoundBigBlackKnob>(mm2px(Vec(21.462, 16.097)), module, MomJeansBase::DENSITY_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(29.001, 44.915)), module, MomJeansBase::TORQUE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(14.175, 49.759)), module, MomJeansBase::CADENCE_PARAM));
-		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(7.996, 62.614)), module, MomJeansBase::COUPLING_PARAM, MomJeansBase::COUPLING_LED_LIGHT));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(23.201, 68.618)), module, MomJeansBase::SHAPE_PARAM));
-		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(7.996, 73.101)), module, MomJeansBase::QUANTIZATION_PARAM, MomJeansBase::QUANTIZATION_LED_LIGHT));
+		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(19.477, 12.053)), module, MomJeansBase::PITCH_MODE_PARAM, MomJeansBase::PITCH_MODE_LED_LIGHT));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.329, 19.253)), module, MomJeansBase::PITCH_PARAM));
+		addParam(createParamCentered<RoundBigBlackKnob>(mm2px(Vec(31.296, 22.843)), module, MomJeansBase::DENSITY_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(31.374, 44.988)), module, MomJeansBase::TORQUE_PARAM));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(13.963, 49.862)), module, MomJeansBase::CADENCE_PARAM));
+		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(8.795, 62.626)), module, MomJeansBase::COUPLING_PARAM, MomJeansBase::COUPLING_LED_LIGHT));
+		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(23.967, 68.655)), module, MomJeansBase::SHAPE_PARAM));
+		addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(mm2px(Vec(8.795, 73.254)), module, MomJeansBase::QUANTIZATION_PARAM, MomJeansBase::QUANTIZATION_LED_LIGHT));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(17.801, 34.734)), module, MomJeansBase::DENSITY_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.000, 81.248)), module, MomJeansBase::SHAPE_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(19.999, 83.249)), module, MomJeansBase::TORQUE_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.996, 85.150)), module, MomJeansBase::CADENCE_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.000, 94.248)), module, MomJeansBase::FM_INDEX_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(19.999, 96.248)), module, MomJeansBase::LINEAR_FM_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.108, 98.149)), module, MomJeansBase::V_OCT_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.996, 111.499)), module, MomJeansBase::SYNC_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(19.785, 33.45)), module, MomJeansBase::DENSITY_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.793, 82.255)), module, MomJeansBase::SHAPE_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.821, 84.253)), module, MomJeansBase::TORQUE_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.795, 86.255)), module, MomJeansBase::CADENCE_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.793, 95.253)), module, MomJeansBase::FM_INDEX_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.821, 97.255)), module, MomJeansBase::LINEAR_FM_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.795, 99.253)), module, MomJeansBase::V_OCT_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.795, 112.254)), module, MomJeansBase::SYNC_INPUT));
 
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(32.000, 107.251)), module, MomJeansBase::OUTPUT_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(19.999, 109.123)), module, MomJeansBase::TRIGGER_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(32.793, 108.255)), module, MomJeansBase::OUTPUT_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(20.821, 110.253)), module, MomJeansBase::TRIGGER_OUTPUT));
 
 		// addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(17.267, 12.607)), module, MomJeansBase::PITCH_LED_LIGHT));
-		addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(6.510, 42.485)), module, MomJeansBase::CADENCE_LED_LIGHT));
+		addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(6.25, 42.25)), module, MomJeansBase::CADENCE_LED_LIGHT));
 	}
 };
 
