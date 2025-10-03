@@ -1,6 +1,12 @@
 #include "plugin.hpp"
 #include "pulsar.h"
 
+// #define INCLUDE_GEN
+
+#ifdef INCLUDE_GEN
+#include "mom_jeans_gen.h"
+#endif
+
 static float fclampf(float x, float a, float b) {
     return fmaxf(fminf(x, b), a);
 }
@@ -267,6 +273,7 @@ struct MomJeans : MomJeansBase {
 	}
 };
 
+#ifdef INCLUDE_GEN
 struct MomJeansGen : MomJeansBase {
 
 	CommonState *gen = 0;
@@ -332,6 +339,7 @@ struct MomJeansGen : MomJeansBase {
 		return { (float) outputBuffers[0][0], (float) outputBuffers[1][0], 0.0f };
 	}
 };
+#endif
 
 struct Mom_jeansWidget : ModuleWidget {
 	Mom_jeansWidget(MomJeansBase* module) {
@@ -372,4 +380,7 @@ struct Mom_jeansWidget : ModuleWidget {
 
 
 Model* modelMom_jeans = createModel<MomJeans, Mom_jeansWidget>("mom-jeans");
+
+#ifdef INCLUDE_GEN
 Model* modelMom_jeans_gen = createModel<MomJeansGen, Mom_jeansWidget>("mom-jeans-gen");
+#endif
