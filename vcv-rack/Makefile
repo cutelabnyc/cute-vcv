@@ -32,10 +32,10 @@ SOURCES += ../cores/oscillator/lut/lut_square_uint16.c
 SOURCES += ../cores/oscillator/lut/lut_tri_uint16.c
 
 # Comment these out if you don't want the gen export involved
-SOURCES += ../cores/pulsar/gen_dsp/genlib.cpp
-SOURCES += ../cores/pulsar/gen_dsp/json_builder.c
-SOURCES += ../cores/pulsar/gen_dsp/json.c
-SOURCES += ../cores/pulsar/mom_jeans_gen.cpp
+# SOURCES += ../cores/pulsar/gen_dsp/genlib.cpp
+# SOURCES += ../cores/pulsar/gen_dsp/json_builder.c
+# SOURCES += ../cores/pulsar/gen_dsp/json.c
+# SOURCES += ../cores/pulsar/mom_jeans_gen.cpp
 
 # Add files to the ZIP package when running `make dist`
 # The compiled plugin and "plugin.json" are automatically added.
