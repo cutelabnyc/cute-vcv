@@ -87,10 +87,7 @@ jobs:
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          choco install jq -y
-          choco install zip -y
+        run: choco install jq -y
 
       - name: Download Rack SDK
         shell: bash
