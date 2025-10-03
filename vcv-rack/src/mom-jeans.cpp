@@ -1,6 +1,5 @@
 #include "plugin.hpp"
 #include "pulsar.h"
-#include "mom_jeans_gen.h"
 
 static float fclampf(float x, float a, float b) {
     return fmaxf(fminf(x, b), a);
