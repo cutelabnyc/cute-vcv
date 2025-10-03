@@ -26,6 +26,11 @@ static float denormalizedPitch(float pitch, float minScaleValue, float maxScaleV
 	return 27.5 * powf(2.f, pitch / 12.f);
 }
 
+static float normalizedPitch(float pitch, float minScaleValue, float maxScaleValue) {
+	float denorm = log2f(pitch / 27.5) * 12.f;
+	return scaleLin(denorm, minScaleValue, maxScaleValue, 0.f, 1.f);
+}
+
 struct FrequencyParamQuantity : ParamQuantity {
 	float _minScaleValue = 0.f;
 	float _maxScaleValue = 84.f;
@@ -40,7 +45,12 @@ struct FrequencyParamQuantity : ParamQuantity {
 		float displayValue = denormalizedPitch(value, _minScaleValue, _maxScaleValue);
         return string::f("%.1f", displayValue);
     }
-    
+
+	void setDisplayValue(float displayValue) override {
+		float np = normalizedPitch(displayValue, _minScaleValue, _maxScaleValue);
+		setValue(np);
+	}
+
     std::string getLabel() override {
         return "Pitch";
     }
@@ -197,7 +207,7 @@ struct MomJeansBase : Module {
 		float pitch_min = 36.f;
 		float pitch_max = 60.f;
 		if (pitch_mode > 0.5f) {
-			pitch_min = 0.f;
+			pitch_min = 12.f;
 			pitch_max = 84.f;
 		}
 
@@ -236,8 +246,18 @@ struct MomJeansBase : Module {
 		outputs[TRIGGER_OUTPUT].setVoltage(pulsar_output.sync * 10.0f);
 		outputs[OUTPUT_OUTPUT].setVoltage(pulsar_output.pulse * 10.0f);
 
-		// lights[PITCH_LED_LIGHT].setBrightness(fclampf(pulsar_output.pulse, 0.0f, 1.0f));
-		lights[CADENCE_LED_LIGHT].setBrightness(fclampf(pulsar_output.internal_lfo, 0.0f, 1.0f));
+		float mod_rate = pulsar_get_internal_mod_rate(&pulsar);
+		if (mod_rate < 15.0f) {
+			lights[CADENCE_LED_LIGHT].setBrightness(fclampf(pulsar_output.internal_lfo, 0.0f, 1.0f));
+		} else {
+			lights[CADENCE_LED_LIGHT].setBrightness(
+				fclampf(
+					scaleLin(mod_rate, 15.0f, 50.0f, 0.5f, 1.0f),
+					0.0f,
+					1.0f
+				)
+			);
+		}
 	}
 };
 

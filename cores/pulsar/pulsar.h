@@ -59,6 +59,7 @@ typedef struct ps {
   float debug_value;
   float sync_output;
   float osc_phase;
+  float internal_mod_rate;
 
   // computed intermediate parameter values, used once per block
   float oscPhaseDelta;
@@ -124,6 +125,7 @@ float pulsar_process(ps_t *self, float pulse_frequency, uint8_t resync, float *d
 float pulsar_get_debug_value(ps_t *self);
 float pulsar_get_internal_lfo_phase(ps_t *self);
 float pulsar_get_sync_output(ps_t *self);
+float pulsar_get_internal_mod_rate(ps_t *self);
 
 #ifdef __cplusplus
 }

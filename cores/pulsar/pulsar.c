@@ -439,6 +439,7 @@ void pulsar_configure(
     _reset_phase(self);
   }
 
+  self->internal_mod_rate = fm;
   self->oscPhaseDelta = fm * self->inv_sample_rate;
   self->density_ratio = density_ratio;
   self->mod_ratio = mod_ratio;
@@ -530,4 +531,9 @@ float pulsar_get_sync_output(ps_t *self)
 {
   // Return the current sync output value
   return self->sync_output;
+}
+
+float pulsar_get_internal_mod_rate(ps_t *self)
+{
+  return self->internal_mod_rate;
 }
