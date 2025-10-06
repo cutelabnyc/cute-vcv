@@ -98,8 +98,8 @@ jobs:
       - name: Build plugin
         shell: bash
         run: |
-          cd vcv-rack
           export RACK_DIR="${PWD}/../Rack-SDK/Rack-SDK"
+          export CORES_DIR="${PWD}/./cores"
           make
           make dist
 
