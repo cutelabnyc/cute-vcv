@@ -95,14 +95,14 @@ jobs:
       - name: Download Rack SDK
         shell: bash
         run: |
-          curl -L ${{ matrix.sdk_url }} -o Rack-SDK.zip
+          curl -L ${{ matrix.sdk_url }} -o ${{ env.VCV_DIR }}/Rack-SDK.zip
           unzip Rack-SDK.zip -d Rack-SDK
 
       - name: Build plugin
         shell: bash
         run: |
           cd ${{ env.VCV_DIR }}
-          export RACK_DIR="${PWD}/../Rack-SDK/Rack-SDK"
+          export RACK_DIR="${PWD}/Rack-SDK/Rack-SDK"
           export CORES_DIR="${PWD}/./cores"
           make
           make dist
