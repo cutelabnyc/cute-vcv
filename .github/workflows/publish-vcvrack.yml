@@ -102,8 +102,8 @@ jobs:
         shell: bash
         run: |
           cd ${{ env.VCV_DIR }}
-          export RACK_DIR="${PWD}/Rack-SDK/Rack-SDK"
-          export CORES_DIR="${PWD}/./cores"
+          export RACK_DIR="./Rack-SDK/Rack-SDK"
+          export CORES_DIR="./cores"
           make
           make dist
 
