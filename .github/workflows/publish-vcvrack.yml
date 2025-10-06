@@ -158,8 +158,7 @@ jobs:
         run: |
           cd ${{ env.VCV_DIR }}
           git cliff -o CHANGELOG_FULL.md
-          cd ..
-          cat ${{ env.VCV_DIR }}/CHANGELOG_FULL.md
+          cat CHANGELOG_FULL.md
 
       - name: Extract changelog for current version
         run: |
