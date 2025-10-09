@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 #define VOICE_MAX 6
-#define RAMPS_MAX 8
+#define RAMPS_MAX 12
 #define BLEP_MAX 6
 #define OSCILLATOR_COUNT 6
 #define PI 3.14159265358979323846

@@ -204,10 +204,10 @@ struct MomJeansBase : Module {
 		// Simply scale the pitch, since the hardware DAC can't do LFO values
 		float lfo_cutoff = 0.0f;
 		float pulse_frequency = 0.f;
-		float pitch_min = 36.f;
-		float pitch_max = 60.f;
+		float pitch_min = 24.f;
+		float pitch_max = 48.f;
 		if (pitch_mode > 0.5f) {
-			pitch_min = 12.f;
+			pitch_min = -12.f;
 			pitch_max = 84.f;
 		}
 
@@ -221,12 +221,6 @@ struct MomJeansBase : Module {
 		pulse_frequency = fclampf(pitch, 1.0f, 20000.0f);
 
 		float density_input_voltage = density + (density_param - 0.5) * 10.0f;
-		if (!inputs[DENSITY_INPUT].isConnected()) {
-			if (density_input_voltage < 0.1f && density_input_voltage > -0.1f) {
-				density_input_voltage = 0.0f;
-			}
-		}
-
 		float density_ratio = fclampf(density_input_voltage / 5.0f, -1.0f, 1.0f);
 		float mod_ratio = fclampf(cadence / 5.0 + cadence_param, 0.0, 1.0);
 		float mod_depth = fclampf(torque / 5.0 + torque_param, 0.0, 1.0);

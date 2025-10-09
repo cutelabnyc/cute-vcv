@@ -188,6 +188,14 @@ extern const q15_t sinTable_q15[FAST_MATH_TABLE_SIZE + 1];
 extern const q31_t sinc_lut_q31[FAST_MATH_TABLE_SIZE + 1];
 extern const q31_t ramp_lut_q31[FAST_MATH_TABLE_SIZE + 1];
 
+/* Farey sequence lookup */
+#define FAREY_SIZE 58
+extern const float farey[FAREY_SIZE];
+
+/* Just some fun ratios */
+#define FUN_RATIOS_SIZE 14
+extern const float fun_ratios[FUN_RATIOS_SIZE];
+
 #ifdef   __cplusplus
 }
 #endif

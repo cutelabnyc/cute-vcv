@@ -208,29 +208,81 @@ float _pulsar_process_voice(ps_t *self, ps_voice_t *voice) {
 }
 
 float _calc_mod_ratio(float f0, float mod_ratio, uint8_t frequency_couple, uint8_t ratio_lock) {
-  static const float lowCutoff = 0.25;
-  static const float highCutoff = 0.5;
-  static const float vibratoMax = 0.5f;
+  static const float lowCutoff = 0.6f;
+  static const float coupledLowCutoff = 0.3f;
+  static const float coupledHighCutoff = 0.45f;
+  static const float vibratoMax = 20.0f;
   static const float ratioMax = 1;
   static float tf = 1;
   static float fac1 = 0;
+  static const float fmax = 1000.0f;
 
   float out = 0;
 
-  if (frequency_couple) {
-    if (mod_ratio < lowCutoff) {
-      out = (mod_ratio / lowCutoff) * vibratoMax;
-    } else if (mod_ratio < highCutoff) {
-      tf = (mod_ratio - lowCutoff) / (highCutoff - lowCutoff);
-      tf = powf(tf, 2.0f); // ease
-      out = (1 - tf) * vibratoMax + (tf) * f0 * 0.1;
+  if (ratio_lock) {
+    if (mod_ratio < 0.01) {
+      out = 0;
     } else {
-      fac1 = (ratioMax - 0.1) * (mod_ratio - highCutoff) / (1 - highCutoff);
-      out = (fac1 + 0.1) * f0;
+      if (frequency_couple) {
+        static const float ratio_interval = 1.0f / (float)(FUN_RATIOS_SIZE - 1);
+        int index = (int)((mod_ratio) / ratio_interval);
+        index = fminf(index, FUN_RATIOS_SIZE - 1);
+        out = f0 * fun_ratios[index];
+      } else {
+        out = powf(mod_ratio, 2.0);
+        float midpoint = out * fmax;
+        float tf;
+        if (midpoint > f0) {
+          tf = (midpoint - f0) / (fmax - f0);
+          tf = powf(tf, 2.0f); // ease
+          out = (tf) * fmax + (1 - tf) * midpoint;
+        } else {
+          tf = (f0 - midpoint) / f0;
+          tf = powf(tf, 2.0f); // ease
+          out = (tf) * 0.0f + (1 - tf) * midpoint;
+        }
+
+        if (out > f0) {
+          float ratio = out / f0;
+          ratio = ceilf(ratio);
+          out = f0 * ratio;
+        } else {
+          float ratio = f0 / out;
+          ratio = floorf(ratio);
+          ratio = fmaxf(ratio, 1.0f);
+          out = f0 / ratio;
+        }
+      }
     }
   } else {
-    out = powf(mod_ratio, 3.5) * 1000.0;
+    if (frequency_couple) {
+      float localLowCutoff = 0.3f;
+      if (mod_ratio < coupledLowCutoff) {
+        tf = (mod_ratio) / (coupledLowCutoff);
+        tf = powf(tf, 2.0f); // ease
+        out = tf * vibratoMax;
+      } else if (mod_ratio < coupledHighCutoff) {
+        tf = (mod_ratio - coupledLowCutoff) / (coupledHighCutoff - coupledLowCutoff);
+        tf = powf(tf, 2.0f); // ease
+        out = (1 - tf) * vibratoMax + (tf) * (f0 + vibratoMax) * 0.4;
+      } else {
+        fac1 = (ratioMax - 0.1) * (mod_ratio - coupledHighCutoff) / (1 - coupledHighCutoff);
+        out = (fac1 + 0.1) * (f0 + vibratoMax);
+      }
+    } else {
+      if (mod_ratio < lowCutoff) {
+        tf = (mod_ratio) / (lowCutoff);
+        tf = powf(tf, 2.0f); // ease
+        out = tf * vibratoMax;
+      } else {
+        tf = (mod_ratio - lowCutoff) / (1.0f - lowCutoff);
+        tf = powf(tf, 2.0f); // ease
+        out = (1 - tf) * vibratoMax + (tf) * (fmax) * 0.1;
+      } 
+    }
   }
+
+  
 
   // if (frequency_couple) {
   //   if (ratio_lock) {
@@ -374,6 +426,16 @@ void _trigger_pulsaret(ps_t *self, float pulse_frequency, float oscPhase)
   );
 
   float bandwidth = _calc_bandwidth(self->density_ratio);
+  static const float overlap_threshold = (VOICE_MAX / 2);
+
+  // Calculate the overlap factor
+  float overlap = grain_length / (self->sample_rate / pulse_frequency);
+  if (overlap > overlap_threshold) {
+    float scale = linear_scale(overlap, overlap_threshold, overlap_threshold + RAMPS_MAX, 1.0f, 0.25f);
+    scale = fmaxf(scale, 0.25f);
+    grain_length *= scale;
+    bandwidth *= scale;
+  }
 
   self->context.debug_value = grain_length;
 
@@ -433,7 +495,7 @@ void pulsar_configure(
   // Process FM
   float fm = _calc_mod_ratio(pulse_frequency, mod_ratio, frequency_couple, ratio_lock);
 
-  fm = _calc_ratio_lock(fm, pulse_frequency, ratio_lock);
+  // fm = _calc_ratio_lock(fm, pulse_frequency, ratio_lock);
 
   if (self->last_ratio_lock != ratio_lock) {
     _reset_phase(self);
