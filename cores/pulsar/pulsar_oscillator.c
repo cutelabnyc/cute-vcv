@@ -29,18 +29,45 @@ float triangle(uint32_t raw_phase, uint32_t phase_increment, float bipolar_phase
 
   // periodic triangle wave function, centered around 0
   float t = fabsf(fmodf(fabsf(x + 0.5f), 2.0f) - 1.0f) * -2.0f + 1.0f;
+  t *= 0.5f;
 
-  // if (raw_phase < phase_increment) {
-  //   // We are crossing from the second half to the first half
-  //   context->discontinuity_amplitude += t; // Full amplitude change
+  if (raw_phase < phase_increment) {
+    // We are crossing from the second half to the first half
+    context->discontinuity_amplitude += t; // Full amplitude change
 
-  //   // If we haven't produced a discontinuity yet, we need to set it up
-  //   if (!context->produced_discontinuity) {
-  //     float discontinuity_phase = (float)(raw_phase) / phase_increment;
-  //     context->discontinuity_phase = -discontinuity_phase;
-  //   }
-  //   context->produced_discontinuity = 1;
+    // If we haven't produced a discontinuity yet, we need to set it up
+    if (!context->produced_discontinuity) {
+      float discontinuity_phase = (float)(raw_phase) / phase_increment;
+      context->discontinuity_phase = -discontinuity_phase;
+    }
+    context->produced_discontinuity = 1;
+  }
+
+  return t;
+}
+
+float triangle_fixed_bandwidth(uint32_t raw_phase, uint32_t phase_increment, float bipolar_phase, float bandwidth, osc_process_context_t *context)
+{
+  // Triangle wave generation
+  float x = bipolar_phase;
+  // if (fabsf(x) < 0.0001f) {
+  //   return 1.0f; // Handle the zero case
   // }
+
+  // periodic triangle wave function, centered around 0
+  float t = fabsf(fmodf(fabsf(x + 0.5f), 2.0f) - 1.0f) * 2.0f - 1.0f;
+
+  if (raw_phase < phase_increment) {
+    // We are crossing from the second half to the first half
+    context->discontinuity_amplitude += t; // Full amplitude change
+
+    // If we haven't produced a discontinuity yet, we need to set it up
+    if (!context->produced_discontinuity) {
+      float discontinuity_phase = (float)(raw_phase) / phase_increment;
+      context->discontinuity_phase = -discontinuity_phase;
+    }
+    context->produced_discontinuity = 1;
+  }
 
   return t;
 }

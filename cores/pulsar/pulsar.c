@@ -208,7 +208,7 @@ float _pulsar_process_voice(ps_t *self, ps_voice_t *voice) {
 }
 
 float _calc_mod_ratio(float f0, float mod_ratio, uint8_t frequency_couple, uint8_t ratio_lock) {
-  static const float lowCutoff = 0.6f;
+  static const float lowCutoff = 0.75f;
   static const float coupledLowCutoff = 0.3f;
   static const float coupledHighCutoff = 0.45f;
   static const float vibratoMax = 20.0f;
@@ -326,7 +326,7 @@ float _calc_ratio_lock(float fm, float f0, uint8_t ratio_lock) {
 void _calc_mod_depth(float f0, float mod_depth, uint8_t frequency_couple, float *low, float *high) {
   static const float breakpoint = 0.85f;
   static const float inv_breakpoint = 1.0f / breakpoint;
-  static const float breakpoint_top_scale = 9.0f / (1.0f - breakpoint);
+  static const float breakpoint_top_scale = 7.0f / (1.0f - breakpoint);
   float depth_mult = 1.0f;
 
   if (frequency_couple) {
@@ -475,9 +475,10 @@ void pulsar_init(ps_t *self, float sample_rate) {
   }
 
   self->oscillator_functions[0] = slow_sinc; // Sinc
-  self->oscillator_functions[1] = blep_square;
-  self->oscillator_functions[2] = blep_saw;
-  self->oscillator_functions[3] = triangle;
+  self->oscillator_functions[6] = triangle_fixed_bandwidth;
+  self->oscillator_functions[2] = blep_square;
+  self->oscillator_functions[3] = blep_saw;
+  self->oscillator_functions[1] = triangle;
   self->oscillator_functions[4] = contained_square;
   self->oscillator_functions[5] = raw_dirty_saw;
 }

@@ -12,7 +12,7 @@
 #define VOICE_MAX 6
 #define RAMPS_MAX 12
 #define BLEP_MAX 6
-#define OSCILLATOR_COUNT 6
+#define OSCILLATOR_COUNT 7
 #define PI 3.14159265358979323846
 
 #ifdef __cplusplus

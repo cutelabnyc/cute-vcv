@@ -33,6 +33,13 @@ float triangle(
     float bandwidth,
     osc_process_context_t *context);
 
+float triangle_fixed_bandwidth(
+    uint32_t raw_phase,
+    uint32_t phase_increment,
+    float bipolar_phase,
+    float bandwidth,
+    osc_process_context_t *context);
+
 float blep_square(
     uint32_t raw_phase,
     uint32_t phase_increment,
