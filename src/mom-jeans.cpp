@@ -61,8 +61,6 @@ struct FrequencyParamQuantity : ParamQuantity {
 };
 
 struct MomJeansBase : Module {
-
-	ps_t pulsar;
 	FrequencyParamQuantity *frequencyParamQuantity;
 
 	enum ParamId {
@@ -150,14 +148,12 @@ struct MomJeansBase : Module {
 		configOutput(TRIGGER_OUTPUT, "Trigger");
 	}
 
-	void onReset(const ResetEvent& e) override {
+	virtual void onReset(const ResetEvent& e) override {
 		Module::onReset(e);
-		pulsar_init(&pulsar, APP->engine->getSampleRate());
 	}
 
-	void onSampleRateChange(const SampleRateChangeEvent& e) override {
+	virtual void onSampleRateChange(const SampleRateChangeEvent& e) override {
 		Module::onSampleRateChange(e);
-		pulsar_init(&pulsar, APP->engine->getSampleRate());
 	}
 
 	virtual PulsarOutput nextSample(
@@ -168,26 +164,24 @@ struct MomJeansBase : Module {
 		float waveform,
 		uint8_t ratio_lock,
 		uint8_t frequency_couple,
-		uint8_t sync
+		uint8_t sync,
+		int channel = 0
 	) = 0;
 
 	void process(const ProcessArgs& args) override {
-		// Read inputs
-		float shape = inputs[SHAPE_INPUT].getVoltage();
-		float torque = inputs[TORQUE_INPUT].getVoltage();
-		float cadence = inputs[CADENCE_INPUT].getVoltage();
-		float fm_index = inputs[FM_INDEX_INPUT].getVoltage();
-		float linear_fm = inputs[LINEAR_FM_INPUT].getVoltage();
-		float v_oct = inputs[V_OCT_INPUT].getVoltage();
-		float sync = inputs[SYNC_INPUT].getVoltage();
-		float density = inputs[DENSITY_INPUT].getVoltage();
 
-		if (!inputs[FM_INDEX_INPUT].isConnected()) {
-			fm_index = 1.0f;
+		// Get the number of channels, just the max across all inputs
+		int maxChannels = 1;
+		for (int i = 0; i < INPUTS_LEN; i++) {
+			int channels = inputs[i].getChannels();
+			if (channels > maxChannels) {
+				maxChannels = channels;
+			}
 		}
+		outputs[OUTPUT_OUTPUT].setChannels(maxChannels);
+		outputs[TRIGGER_OUTPUT].setChannels(maxChannels);
 
 		// Read parameters
-		float pitch = params[PITCH_PARAM].getValue();
 		float density_param = params[DENSITY_PARAM].getValue() / 100.f;
 		float torque_param = params[TORQUE_PARAM].getValue() / 100.f;
 		float cadence_param = params[CADENCE_PARAM].getValue() / 100.f;
@@ -201,9 +195,6 @@ struct MomJeansBase : Module {
 		lights[QUANTIZATION_LED_LIGHT].setBrightness((quantization > 0.5f) ? 1.0f : 0.0f);
 		lights[PITCH_MODE_LED_LIGHT].setBrightness((pitch_mode > 0.5f) ? 1.0f : 0.0f);
 
-		// Simply scale the pitch, since the hardware DAC can't do LFO values
-		float lfo_cutoff = 0.0f;
-		float pulse_frequency = 0.f;
 		float pitch_min = 23.f;
 		float pitch_max = 49.f;
 		if (pitch_mode > 0.5f) {
@@ -212,50 +203,78 @@ struct MomJeansBase : Module {
 		}
 
 		frequencyParamQuantity->setScaleRange(pitch_min, pitch_max);
-		pitch = scaleLin(pitch, lfo_cutoff, 1.f, pitch_min, pitch_max);
-		pitch += v_oct * 12.0f;
-		pitch = 27.5 * powf(2.f, pitch / 12.f);
 
-		// apply linear fm
-		pitch += linear_fm * fm_index * pitch * 0.2f;
-		pulse_frequency = fclampf(pitch, 1.0f, 20000.0f);
+		// Process each channel
+		for (int c = 0; c < maxChannels; c++) {
 
-		float density_input_voltage = density + (density_param - 0.5) * 10.0f;
-		float density_ratio = fclampf(density_input_voltage / 5.0f, -1.0f, 1.0f);
-		float mod_ratio = fclampf(cadence / 5.0 + cadence_param, 0.0, 1.0);
-		float mod_depth = fclampf(torque / 5.0 + torque_param, 0.0, 1.0);
-		float waveform = fclampf(shape / 5.0 + shape_param, 0.0, 1.0) * 4.9999f;
-		
-		PulsarOutput pulsar_output = nextSample(
-			pulse_frequency,
-			density_ratio,
-			mod_ratio,
-			mod_depth,
-			waveform,
-			quantization > 0.5f ? 1 : 0,
-			coupling > 0.5f ? 1 : 0,
-			sync > 2.5f ? 1 : 0
-		);
+			// Read inputs
+			float shape = inputs[SHAPE_INPUT].getPolyVoltage(c);
+			float torque = inputs[TORQUE_INPUT].getPolyVoltage(c);
+			float cadence = inputs[CADENCE_INPUT].getPolyVoltage(c);
+			float fm_index = inputs[FM_INDEX_INPUT].getPolyVoltage(c);
+			float linear_fm = inputs[LINEAR_FM_INPUT].getPolyVoltage(c);
+			float v_oct = inputs[V_OCT_INPUT].getPolyVoltage(c);
+			float sync = inputs[SYNC_INPUT].getPolyVoltage(c);
+			float density = inputs[DENSITY_INPUT].getPolyVoltage(c);
 
-		outputs[TRIGGER_OUTPUT].setVoltage(pulsar_output.sync * 10.0f);
-		outputs[OUTPUT_OUTPUT].setVoltage(pulsar_output.pulse * 10.0f);
+			if (!inputs[FM_INDEX_INPUT].isConnected()) {
+				fm_index = 1.0f;
+			}
 
-		float mod_rate = pulsar_get_internal_mod_rate(&pulsar);
-		if (mod_rate < 15.0f) {
-			lights[CADENCE_LED_LIGHT].setBrightness(fclampf(pulsar_output.internal_lfo, 0.0f, 1.0f));
-		} else {
-			lights[CADENCE_LED_LIGHT].setBrightness(
-				fclampf(
-					scaleLin(mod_rate, 15.0f, 50.0f, 0.5f, 1.0f),
-					0.0f,
-					1.0f
-				)
+			// Simply scale the pitch, since the hardware DAC can't do LFO values
+			float lfo_cutoff = 0.0f;
+			float pulse_frequency = 0.f;
+
+			float pitch = params[PITCH_PARAM].getValue();
+			pitch = scaleLin(pitch, lfo_cutoff, 1.f, pitch_min, pitch_max);
+			pitch += v_oct * 12.0f;
+			pitch = 27.5 * powf(2.f, pitch / 12.f);
+
+			// apply linear fm
+			pitch += linear_fm * fm_index * pitch * 0.2f;
+			pulse_frequency = fclampf(pitch, 1.0f, 20000.0f);
+
+			float density_input_voltage = density + (density_param - 0.5) * 10.0f;
+			float density_ratio = fclampf(density_input_voltage / 5.0f, -1.0f, 1.0f);
+			float mod_ratio = fclampf(cadence / 5.0 + cadence_param, 0.0, 1.0);
+			float mod_depth = fclampf(torque / 5.0 + torque_param, 0.0, 1.0);
+			float waveform = fclampf(shape / 5.0 + shape_param, 0.0, 1.0) * 4.9999f;
+			
+			PulsarOutput pulsar_output = nextSample(
+				pulse_frequency,
+				density_ratio,
+				mod_ratio,
+				mod_depth,
+				waveform,
+				quantization > 0.5f ? 1 : 0,
+				coupling > 0.5f ? 1 : 0,
+				sync > 2.5f ? 1 : 0,
+				c
 			);
+
+			outputs[TRIGGER_OUTPUT].setVoltage(pulsar_output.sync * 10.0f, c);
+			outputs[OUTPUT_OUTPUT].setVoltage(pulsar_output.pulse * 10.0f, c);
 		}
 	}
 };
 
 struct MomJeans : MomJeansBase {
+	ps_t pulsars[16];
+
+	void onReset(const ResetEvent& e) override {
+		MomJeansBase::onReset(e);
+		for (int i = 0; i < 16; i++) {
+			pulsar_init(&pulsars[i], APP->engine->getSampleRate());
+		}
+	}
+
+	void onSampleRateChange(const SampleRateChangeEvent& e) override {
+		Module::onSampleRateChange(e);
+		for (int i = 0; i < 16; i++) {
+			pulsar_init(&pulsars[i], APP->engine->getSampleRate());
+		}
+	}
+
 	virtual PulsarOutput nextSample (
 		float pulse_frequency,
 		float density_ratio,
@@ -264,8 +283,12 @@ struct MomJeans : MomJeansBase {
 		float waveform,
 		uint8_t ratio_lock,
 		uint8_t frequency_couple,
-		uint8_t sync
+		uint8_t sync,
+		int channel = 0
 	) override {
+
+		ps_t &pulsar = pulsars[channel % 16];
+
 		pulsar_configure(
 			&pulsar,
 			pulse_frequency,
@@ -283,6 +306,21 @@ struct MomJeans : MomJeansBase {
 		float sync_output = pulsar_get_sync_output(&pulsar);
 		float internal_lfo = sinf(pulsar_get_internal_lfo_phase(&pulsar) * 2.0f * M_PI);
 
+		if (channel == 0) {
+			float mod_rate = pulsar_get_internal_mod_rate(&pulsar);
+			if (mod_rate < 15.0f) {
+				lights[CADENCE_LED_LIGHT].setBrightness(fclampf(internal_lfo, 0.0f, 1.0f));
+			} else {
+				lights[CADENCE_LED_LIGHT].setBrightness(
+					fclampf(
+						scaleLin(mod_rate, 15.0f, 50.0f, 0.5f, 1.0f),
+						0.0f,
+						1.0f
+					)
+				);
+			}
+		}
+
 		return { pulse, sync_output, internal_lfo };
 	}
 };
@@ -290,12 +328,14 @@ struct MomJeans : MomJeansBase {
 #ifdef INCLUDE_GEN
 struct MomJeansGen : MomJeansBase {
 
-	CommonState *gen = 0;
+	CommonState *gens[16];
 	t_sample **inputBuffers;
 	t_sample **outputBuffers;
 	
 	MomJeansGen() {
-		gen = (CommonState *) mom_jeans_gen::create(APP->engine->getSampleRate(), 1); // sample by sample
+		for (int i = 0; i < 16; i++) {
+			gens[i] = (CommonState *) mom_jeans_gen::create(APP->engine->getSampleRate(), 1); // sample by sample
+		}
 
 		inputBuffers = new t_sample*[mom_jeans_gen::num_inputs()];
 		outputBuffers = new t_sample*[mom_jeans_gen::num_outputs()];
@@ -319,7 +359,9 @@ struct MomJeansGen : MomJeansBase {
 		delete[] inputBuffers;
 		delete[] outputBuffers;
 
-		mom_jeans_gen::destroy(gen);
+		for (int i = 0; i < 16; i++) {
+			mom_jeans_gen::destroy(gens[i]);
+		}
 	}
 
 	virtual PulsarOutput nextSample (
@@ -330,8 +372,11 @@ struct MomJeansGen : MomJeansBase {
 		float waveform,
 		uint8_t ratio_lock,
 		uint8_t frequency_couple,
-		uint8_t sync
+		uint8_t sync,
+		int channel = 0
 	) override {
+
+		CommonState *gen = gens[channel % 16];
 
 		// Set inputs
 		inputBuffers[0][0] = pulse_frequency;
