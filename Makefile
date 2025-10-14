@@ -2,7 +2,7 @@
 RACK_DIR ?= ../..
 
 # If CORES_DIR is not defined when calling the Makefile, default to one directory above
-CORES_DIR ?= ../cores
+CORES_DIR ?= ./cores
 
 # FLAGS will be passed to both the C and C++ compiler
 FLAGS += -I$(CORES_DIR)/pulsar
@@ -10,7 +10,7 @@ FLAGS += -I$(CORES_DIR)/phasor
 FLAGS += -I$(CORES_DIR)/oscillator
 
 # Comment these out if you don't want the gen export involved
-FLAGS += -I$(CORES_DIR)/pulsar/gen_dsp
+# FLAGS += -I$(CORES_DIR)/pulsar/gen_dsp
 
 CFLAGS +=
 CXXFLAGS +=
