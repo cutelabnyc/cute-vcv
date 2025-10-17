@@ -1,5 +1,6 @@
 #include "plugin.hpp"
 #include "pulsar.h"
+#include <settings.hpp>
 
 // #define INCLUDE_GEN
 
@@ -8,7 +9,7 @@
 #endif
 
 static float fclampf(float x, float a, float b) {
-    return fmaxf(fminf(x, b), a);
+	return fmaxf(fminf(x, b), a);
 }
 
 static float scaleLin(float x, float a, float b, float c, float d) {
@@ -40,28 +41,35 @@ struct FrequencyParamQuantity : ParamQuantity {
 		_maxScaleValue = maxValue;
 	}
 
-    std::string getDisplayValueString() override {
-        float value = getValue();
+	std::string getDisplayValueString() override {
+		float value = getValue();
 		float displayValue = denormalizedPitch(value, _minScaleValue, _maxScaleValue);
-        return string::f("%.1f", displayValue);
-    }
+		return string::f("%.1f", displayValue);
+	}
 
 	void setDisplayValue(float displayValue) override {
 		float np = normalizedPitch(displayValue, _minScaleValue, _maxScaleValue);
 		setValue(np);
 	}
 
-    std::string getLabel() override {
-        return "Pitch";
-    }
-    
-    std::string getUnit() override {
-        return "Hz"; // or whatever unit you want
-    }
+	std::string getLabel() override {
+		return "Pitch";
+	}
+	
+	std::string getUnit() override {
+		return "Hz"; // or whatever unit you want
+	}
 };
 
 struct MomJeansBase : Module {
 	FrequencyParamQuantity *frequencyParamQuantity;
+
+	enum Theme {
+		FOLLOW = 0,  // Add this = 0,
+		LIGHT = 1,
+		DARK = 2,
+		HALLOWEEN = 3
+	};
 
 	enum ParamId {
 		PITCH_PARAM,
@@ -98,6 +106,9 @@ struct MomJeansBase : Module {
 		PITCH_MODE_LED_LIGHT,
 		LIGHTS_LEN
 	};
+
+	Theme currentTheme = FOLLOW;  // Default to follow
+    inline static Theme defaultTheme = FOLLOW;  // Default to follow
 
 	MomJeansBase() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -146,6 +157,81 @@ struct MomJeansBase : Module {
 		configInput(SYNC_INPUT, "Sync");
 		configOutput(OUTPUT_OUTPUT, "Output");
 		configOutput(TRIGGER_OUTPUT, "Trigger");
+
+		currentTheme = loadDefaultTheme();
+	}
+
+	static Theme getDefaultTheme() {
+		return defaultTheme;
+	}
+
+	Theme getEffectiveTheme() const {
+        if (currentTheme == FOLLOW) {
+            return settings::preferDarkPanels ? DARK : LIGHT;
+        }
+        return currentTheme;
+    }
+
+	static Theme loadDefaultTheme() {
+		std::string settingsPath = asset::user("MomJeans.json");
+		FILE* file = fopen(settingsPath.c_str(), "r");
+		if (!file)
+			return FOLLOW;
+		
+		DEFER({ fclose(file); });
+		json_error_t error;
+		json_t* rootJ = json_loadf(file, 0, &error);
+		if (!rootJ)
+			return FOLLOW;
+		DEFER({ json_decref(rootJ); });
+		
+		json_t* defaultThemeJ = json_object_get(rootJ, "defaultTheme");
+		defaultTheme = FOLLOW; // cached local value
+		if (defaultThemeJ)
+			defaultTheme = (Theme)json_integer_value(defaultThemeJ);
+
+		return defaultTheme;
+	}
+
+	static void saveDefaultTheme(Theme theme) {
+		defaultTheme = theme; // cached local value
+		std::string settingsPath = asset::user("MomJeans.json");
+		
+		// Load existing settings or create new
+		json_t* rootJ = json_object();
+		FILE* file = fopen(settingsPath.c_str(), "r");
+		if (file) {
+			json_error_t error;
+			json_t* existingJ = json_loadf(file, 0, &error);
+			fclose(file);
+			if (existingJ) {
+				json_decref(rootJ);
+				rootJ = existingJ;
+			}
+		}
+		
+		// Update theme setting
+		json_object_set_new(rootJ, "defaultTheme", json_integer(theme));
+		
+		// Save to file
+		file = fopen(settingsPath.c_str(), "w");
+		if (file) {
+			json_dumpf(rootJ, file, JSON_INDENT(2));
+			fclose(file);
+		}
+		json_decref(rootJ);
+	}
+
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		json_object_set_new(rootJ, "currentTheme", json_integer(currentTheme));
+		return rootJ;
+	}
+	
+	void dataFromJson(json_t* rootJ) override {
+		json_t* currentThemeJ = json_object_get(rootJ, "currentTheme");
+		if (currentThemeJ)
+			currentTheme = (Theme)json_integer_value(currentThemeJ);
 	}
 
 	virtual void onReset(const ResetEvent& e) override {
@@ -401,10 +487,36 @@ struct MomJeansGen : MomJeansBase {
 #endif
 
 struct Mom_jeansWidget : ModuleWidget {
+	SvgPanel* lightPanel;
+	SvgPanel* darkPanel;
+	SvgPanel* halloweenPanel;
+
 	Mom_jeansWidget(MomJeansBase* module) {
 		setModule(module);
 
-		setPanel(createPanel(asset::plugin(pluginInstance, "res/mom-jeans.svg")));
+		lightPanel = createPanel(asset::plugin(pluginInstance, "res/mom-jeans.svg"));
+        darkPanel = createPanel(asset::plugin(pluginInstance, "res/mom-jeans-dark.svg"));
+		halloweenPanel = createPanel(asset::plugin(pluginInstance, "res/mom-jeans-halloween.svg"));
+
+        // Determine which theme to use
+        MomJeansBase::Theme effectiveTheme;
+
+		if (module) {
+			effectiveTheme = module->getEffectiveTheme();
+		} else {
+			// Module browser preview - always check current default
+			effectiveTheme = MomJeansBase::loadDefaultTheme();
+			if (effectiveTheme == MomJeansBase::FOLLOW) {
+				effectiveTheme = settings::preferDarkPanels ? MomJeansBase::DARK : MomJeansBase::LIGHT;
+			}
+		}
+
+		setPanel(lightPanel);
+		addChild(darkPanel);
+		addChild(halloweenPanel);
+		lightPanel->visible = (effectiveTheme == MomJeansBase::LIGHT);
+		darkPanel->visible = (effectiveTheme == MomJeansBase::DARK);
+		halloweenPanel->visible = (effectiveTheme == MomJeansBase::HALLOWEEN);
 
 		// addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
@@ -434,6 +546,91 @@ struct Mom_jeansWidget : ModuleWidget {
 
 		// addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(17.267, 12.607)), module, MomJeansBase::PITCH_LED_LIGHT));
 		addChild(createLightCentered<SmallLight<YellowLight>>(mm2px(Vec(6.25, 42.25)), module, MomJeansBase::CADENCE_LED_LIGHT));
+	}
+
+	void step() override {
+		MomJeansBase* module = dynamic_cast<MomJeansBase*>(this->module);
+
+		MomJeansBase::Theme effectiveTheme;
+
+		if (module) {
+			effectiveTheme = module->getEffectiveTheme();
+		} else {
+			// Module browser preview - always check current default
+			effectiveTheme = MomJeansBase::loadDefaultTheme();
+			if (effectiveTheme == MomJeansBase::FOLLOW) {
+				effectiveTheme = settings::preferDarkPanels ? MomJeansBase::DARK : MomJeansBase::LIGHT;
+			}
+		}
+
+		lightPanel->visible = (effectiveTheme == MomJeansBase::LIGHT);
+		darkPanel->visible = (effectiveTheme == MomJeansBase::DARK);
+		halloweenPanel->visible = (effectiveTheme == MomJeansBase::HALLOWEEN);
+		
+		ModuleWidget::step();
+	}
+
+	void appendContextMenu(Menu* menu) override {
+		MomJeansBase* module = dynamic_cast<MomJeansBase*>(this->module);
+        if (!module)
+            return;
+        
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Theme"));
+        
+        // "Set" submenu
+        menu->addChild(createSubmenuItem("Set", "", [=](Menu* menu) {
+            menu->addChild(createCheckMenuItem("Follow system", "",
+                [=]() { return module->currentTheme == MomJeansBase::FOLLOW; },
+                [=]() { module->currentTheme = MomJeansBase::FOLLOW; }
+            ));
+            menu->addChild(createCheckMenuItem("Light", "",
+                [=]() { return module->currentTheme == MomJeansBase::LIGHT; },
+                [=]() { module->currentTheme = MomJeansBase::LIGHT; }
+            ));
+            menu->addChild(createCheckMenuItem("Dark", "",
+                [=]() { return module->currentTheme == MomJeansBase::DARK; },
+                [=]() { module->currentTheme = MomJeansBase::DARK; }
+            ));
+			menu->addChild(createCheckMenuItem("Halloween", "",
+				[=]() { return module->currentTheme == MomJeansBase::HALLOWEEN; },
+				[=]() { module->currentTheme = MomJeansBase::HALLOWEEN; }
+			));
+        }));
+        
+        // "Set Default" submenu
+        menu->addChild(createSubmenuItem("Set Default", "", [=](Menu* menu) {
+            MomJeansBase::Theme currentDefault = MomJeansBase::getDefaultTheme();
+            
+            menu->addChild(createCheckMenuItem("Follow system", "",
+                [=]() { return currentDefault == MomJeansBase::FOLLOW; },
+                [=]() {
+					module->currentTheme = MomJeansBase::FOLLOW;
+					MomJeansBase::saveDefaultTheme(MomJeansBase::FOLLOW);
+				}
+            ));
+            menu->addChild(createCheckMenuItem("Light", "",
+                [=]() { return currentDefault == MomJeansBase::LIGHT; },
+                [=]() {
+					module->currentTheme = MomJeansBase::LIGHT;
+					MomJeansBase::saveDefaultTheme(MomJeansBase::LIGHT);
+				}
+            ));
+            menu->addChild(createCheckMenuItem("Dark", "",
+                [=]() { return currentDefault == MomJeansBase::DARK; },
+                [=]() {
+					module->currentTheme = MomJeansBase::DARK;
+					MomJeansBase::saveDefaultTheme(MomJeansBase::DARK);
+				}
+            ));
+			menu->addChild(createCheckMenuItem("Halloween", "",
+				[=]() { return currentDefault == MomJeansBase::HALLOWEEN; },
+				[=]() {
+					module->currentTheme = MomJeansBase::HALLOWEEN;
+					MomJeansBase::saveDefaultTheme(MomJeansBase::HALLOWEEN);
+				}
+			));
+        }));
 	}
 };
 

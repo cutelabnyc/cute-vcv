@@ -326,7 +326,7 @@ float _calc_ratio_lock(float fm, float f0, uint8_t ratio_lock) {
 void _calc_mod_depth(float f0, float mod_depth, uint8_t frequency_couple, float *low, float *high) {
   static const float breakpoint = 0.85f;
   static const float inv_breakpoint = 1.0f / breakpoint;
-  static const float breakpoint_top_scale = 7.0f / (1.0f - breakpoint);
+  static const float breakpoint_top_scale = 8.0f / (1.0f - breakpoint);
   float depth_mult = 1.0f;
 
   if (frequency_couple) {
@@ -334,9 +334,9 @@ void _calc_mod_depth(float f0, float mod_depth, uint8_t frequency_couple, float 
     depth_mult = lf * powf(mod_depth, 2.7) * 10.0f;
   } else {
     if (mod_depth < breakpoint) {
-      depth_mult = mod_depth * inv_breakpoint;
+      depth_mult = powf(mod_depth * inv_breakpoint, 2.0f);
     } else {
-      depth_mult = (mod_depth - 0.75) * breakpoint_top_scale + 1.0f;
+      depth_mult = (mod_depth - breakpoint) * breakpoint_top_scale + 1.0f;
     }
   }
 

@@ -241,14 +241,14 @@
       </g>
     </g>
     <g id="edits">
-      <line x1="52.85" y1="44.65" x2="47.82" y2="49.36" style="fill: none; stroke: #231f20; stroke-linecap: round; stroke-miterlimit: 10; stroke-width: .25px;"></line>
-      <path d="M65.09375 42C61.677083333333336 46.22916666666667 55.47916666666668 46.88541666666667 51.25000000000001 43.458333333333336C49.364583333333336 41.927083333333336 48.177083333333336 39.604166666666664 47.770833333333336 37.625" style="fill: none; stroke: #231f20; stroke-linecap: round; stroke-miterlimit: 10; stroke-width: .25px;"></path>
+      <line x1="49.81" y1="44.95" x2="46.74" y2="47.21" style="fill: none; stroke: #231f20; stroke-linecap: round; stroke-miterlimit: 10; stroke-width: .25px;"></line>
+      <path d="M65.09375 44.958333333333336C61.677083333333336 49.1875 55.47916666666668 49.84375 51.25000000000001 46.416666666666664C49.364583333333336 44.885416666666664 48.177083333333336 42.56249999999999 47.770833333333336 40.58333333333333" style="fill: none; stroke: #231f20; stroke-linecap: round; stroke-miterlimit: 10; stroke-width: .25px;"></path>
     </g>
     <path d="M27.135416666666668 159.76041666666669C30.625000000000004 163.9375 30.0625 170.13541666666669 25.895833333333336 173.62500000000003C25.645833333333336 173.83333333333334 25.239583333333336 174.125 25.239583333333336 174.125" style="fill: none; stroke: #231f20; stroke-linecap: round; stroke-miterlimit: 10; stroke-width: .25px;"></path>
     <path d="M19.010416666666668 191.86458333333334C15.166666666666668 188.02083333333334 15.166666666666668 181.79166666666669 19.010416666666668 177.94791666666666C19.770833333333336 177.1875 20.708333333333332 176.67708333333334 21.593750000000004 176.13541666666666S24.479166666666668 174.63541666666666 25.229166666666668 174.13541666666666" style="fill: none; stroke: #231f20; stroke-linecap: round; stroke-miterlimit: 10; stroke-width: .25px;"></path>
   </g>
   <g id="components" display="none">
-    <circle id="pitch_mode" cx="57.51" cy="35.59" r="2.95" style="fill:#FF0000;"></circle>
+    <circle id="pitch_mode" cx="57.52" cy="38.53" r="2.95" style="fill:#FF0000;"></circle>
     <circle id="density" cx="92.41" cy="67.45" r="2.95" style="fill:#FF0000;"></circle>
     <circle id="pitch" cx="30.50" cy="56.85" r="2.95" style="fill:#FF0000;"></circle>
     <circle id="cadence" cx="41.23" cy="147.23" r="2.95" style="fill:#FF0000;"></circle>
